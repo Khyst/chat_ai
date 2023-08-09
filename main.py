@@ -3,7 +3,7 @@
 import streamlit as st
 from streamlit_chat import message
 from dotenv import load_dotenv
-import os, sys, datetime
+import os, sys, datetime, time
 
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import (
@@ -24,8 +24,14 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from langchain.chains.question_answering import load_qa_chain
 
+import openai
+
 from PyPDF2 import PdfReader
-import time
+
+from streamlit_modal import Modal
+
+import streamlit.components.v1 as components
+
 
 def init():
 
@@ -82,21 +88,25 @@ def create_vector_stores_with_embedding(documents):
 
 def conversation_chain(vectorstore):
 
-    llm = ChatOpenAI()
-    streaming_llm = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()])
+    llm = ChatOpenAI(max_tokens=2600, max_retries=2600, model="gpt-3.5-turbo-16k", temperature=0.9)
+    
+    streaming_llm = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], max_tokens=2600, max_retries=2600, model="gpt-3.5-turbo-16k", temperature=0.9)
 
     question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
+    
     doc_chain = load_qa_chain(streaming_llm, chain_type="stuff", prompt=QA_PROMPT)
 
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
     retriever = vectorstore.as_retriever()
+    
     retriever.search_kwargs['max_token_limit'] = 4096
 
     conversation_chain = ConversationalRetrievalChain(
         question_generator=question_generator,
         retriever = retriever,
         combine_docs_chain=doc_chain,
-        memory=memory
+        memory=memory,
     )
 
     return conversation_chain
@@ -114,7 +124,7 @@ def handle_user_input(user_input):
         else:
             message(msg.content, is_user=False, key=str(i)+'_chatbot')
     
-def handle_csv_data(country, region, options_1, options_2, start_date, end_date):
+def handle_csv_data(country, region, options_1, options_2, startDate_obj, endDate_obj):
     import pandas as pd
     import numpy as np
     import random
@@ -136,16 +146,7 @@ def handle_csv_data(country, region, options_1, options_2, start_date, end_date)
     selectedTag = options_1
     print(selectedTag)
 
-
-    import datetime
-
-    startDate = '03/08/2023'
-    endDate = '04/08/2023'
-
     format_str = '%d/%m/%Y'  
-
-    startDate_obj = datetime.datetime.strptime(startDate, format_str) 
-    endDate_obj = datetime.datetime.strptime(endDate, format_str) 
 
     days = int(endDate_obj.strftime("%d")) - int(startDate_obj.strftime("%d")) + 1
         
@@ -188,8 +189,10 @@ def handle_csv_data(country, region, options_1, options_2, start_date, end_date)
 
     f = open("chat_query.txt", "w", encoding="cp949")
 
+    f.write("아래 양식을 참고해서, 워케이션 계획을 친화적이게 알려줘. 각 관광지, 워케이션에 대해 상세하게 알려주면 좋겠고, 중간 중간에 여행에 대한 부가정보도 추가해주면 좋아. \n")
+
     f.write("(양식)\n")
-    f.write("==============================================================================================================\n")
+    f.write("---\n")
     f.write("<"+startDate_obj.strftime("%y-%m-%d") + "부터 " + endDate_obj.strftime("%y-%m-%d") + "까지의 워케이션 일정>\n")
 
     f.write(f'1. 추천된 워케이션')
@@ -198,7 +201,7 @@ def handle_csv_data(country, region, options_1, options_2, start_date, end_date)
     f.write(f'주소 : {recommend_acco["주소"]}\n')
     f.write(f'전화번호 : {recommend_acco["주소"]}\n')
     f.write(f'정보 : {recommend_acco["소개"]}\n')
-    f.write(f'예약하기 : {recommend_acco["예약링크"]}\n\n')
+    f.write(f'예약하기 : {recommend_acco["예약링크"]}\n')
 
     for i in range(days):
         # 숙박 장소
@@ -224,11 +227,10 @@ def handle_csv_data(country, region, options_1, options_2, start_date, end_date)
             f.write(f'종류 : {recommend_tour["태그"]}\n')
             f.write(f'주소 : {recommend_tour["주소"]}\n')
             f.write(f'전화번호 : {recommend_tour["전화번호"]}\n')
-            f.write(f'소개 : {recommend_tour["소개"]}\n\n\n')
+            f.write(f'소개 : {recommend_tour["소개"]}\n')
 
 
-    f.write("==============================================================================================================\n")
-    f.write("위 양식을 통해, 친화적으로 알려주는 워케이션 계획표를 작성해줘. 맛집, 관광지, 워케이션 전부 알려줘야되, 중간에 잘리면 안돼. \n")
+    f.write("---\n")
 
     f.close()
 
@@ -236,43 +238,55 @@ def handle_csv_data(country, region, options_1, options_2, start_date, end_date)
 
     chat_query = f.read()
 
-    response = st.session_state.conversation({'question' : chat_query})
+    st.session_state.chat_history = []
 
-    st.session_state.chat_history = response['chat_history']
+    try:
+        response = st.session_state.conversation({'question' : chat_query})
 
-    for i, msg in enumerate(st.session_state.chat_history):
-        if i % 2 == 0:
-            ex_msg = "입력 예시: \n" + msg.content
-            print("입력 예시: \n", msg.content)
-            message(ex_msg, is_user=False, key=str(i)+'_chatbot')
-            pass
-        else:
-            print(msg.content)
-            message(msg.content, is_user=True, key=str(i)+'_user')
-            pass
+        st.session_state.chat_history = response['chat_history']
+
+        for i, msg in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                #ex_msg = "입력 예시: \n" + msg.content
+                #print("입력 예시: \n", msg.content)
+                #message(ex_msg, is_user=False, key=str(i)+'_chatbot')
+                pass
+            else:
+                print(msg.content)
+                #st.write('Hello, *World!* :sunglasses:')
+                with st.container():
+                    st.write(msg.content)
+                pass
+
+    except openai.InvalidRequestError :
+        message("사용할 수 있는 Token의 갯수를 초과하였습니다. 페이지를 새로 고침하거나, 조건을 다르게 해서 적어주세요.")    
 
 def user_input():
     message("안녕하세요, 저는 여러분의 워케이션 어시스턴트에요. 여러분이 가고 싶어하는 여행 정보에 대해 간략히 알려주세요")
-    message("(워케이션 시작일, 종료일, 숙박(워케이션 장소 종류), 선호하는 식당 종류, 선호하는 레저 종류) 가 들어가게 애기해주세요.")
+    #message("(워케이션 시작일, 종료일, 숙박(워케이션 장소 종류), 선호하는 식당 종류, 선호하는 레저 종류) 가 들어가게 애기해주세요.")
     
-    start_date = st.date_input("워케이션 시작일자를 선택해주세요", datetime.date(2019, 7, 6))
-    end_date = st.date_input("워케이션 종료일자 선택해주세요", datetime.date(2019, 7, 6))
+    start_date = st.date_input("워케이션 시작일자를 선택해주세요", datetime.date(2023, 7, 6))
+    end_date = st.date_input("워케이션 종료일자 선택해주세요", datetime.date(2023, 7, 6))
 
-    country = st.multiselect(
-        '워케이션을 가려는 지역을 선택해주세요(한곳만 선택해주세요)',
-        ["제주시", "서귀포시", "제주도 섬"], 
-        max_selections=1
-        )
+    # country = st.multiselect(
+    #     '워케이션을 가려는 지역을 선택해주세요(한곳만 선택해주세요)',
+    #     ["제주시", "서귀포시", "제주도 섬"], 
+    #     max_selections=1
+    #     )
+
+    country = ["제주시", "서귀포시"]
 
     region = st.multiselect(
         '워케이션을 가려는 상세 지역을 선택해주세요(한곳만 선택해주세요)',
-        ["제주시내", "서귀포시내", "조천", "화전"],
+        ["제주시내", "서귀포시내", "조천", "화전", "구좌", "인덕", "성산", ],
         max_selections=1
         )
-    options_1 = st.multiselect(
-        '선호하는 워케이션 장소의 유형을 선택해주세요',
-        ["도심형", "소도시형", "해양형", "산악형", "스테이형", "호텔형", "워케이션 특화형"],
-        )
+
+    # options_1 = st.multiselect(
+    #     '선호하는 워케이션 장소의 유형을 선택해주세요',
+    #     )
+    
+    options_1 = ["도심형", "소도시형", "해양형", "산악형", "스테이형", "호텔형", "워케이션 특화형"]
     
     options_２ = st.multiselect(
         '워케이션에서 즐기려고 하는 태그를 선택해주세요',
@@ -289,7 +303,7 @@ def main():
     
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            SystemMessage(content="Your are a helpful assistant."),
+            SystemMessage(content="너는 정말 유익한 정보를 알려주는 친구야."),
         ]
 
     if "chat_history" not in st.session_state:
@@ -298,20 +312,25 @@ def main():
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
 
-    st.header("Workation Assisntant APP 😎")
+    st.header("Your workation Buddy : Woddy")
+    st.write("당신의 워케이션을 도와주는 Woddy를 사용해보세요")
     # User Usage
     country, region, options_1, options_2, start_date, end_date = user_input()
-    
-    with st.spinner("Preparing..."):
-        # 1. Get the documents
-        documents = get_the_documents("./docs/workation_1.pdf")
-        # 2. Create Our Vector stores with embedding
-        vectorstore = create_vector_stores_with_embedding(documents)
-        # Create Converstation Chain (or Agent)
-        st.session_state.conversation = conversation_chain(vectorstore)        
 
     if st.button('워케이션 계획해줘!'):
-        handle_csv_data(country, region, options_1, options_2, start_date, end_date)
+        with st.spinner("Preparing..."):
+            # 1. Get the documents
+            documents = get_the_documents("./docs/workation_1.pdf")
+            # 2. Create Our Vector stores with embedding
+            vectorstore = create_vector_stores_with_embedding(documents)
+            # Create Converstation Chain (or Agent)
+            st.session_state.conversation = conversation_chain(vectorstore)        
+            
+        with st.spinner("Loading..."):
+            try:
+                handle_csv_data(country, region, options_1, options_2, start_date, end_date)
+            except IndexError:
+                message("조건을 만족하는 충분한 데이터를 찾지 못하였습니다. 조건을 다르게 해서 적어주세요")
 
 if __name__ == '__main__':
     main()
