@@ -88,9 +88,9 @@ def create_vector_stores_with_embedding(documents):
 
 def conversation_chain(vectorstore):
 
-    llm = ChatOpenAI(max_tokens=2600, max_retries=2600, model="gpt-3.5-turbo-16k", temperature=0.9)
+    llm = ChatOpenAI(max_tokens=3000, max_retries=3000, model="gpt-3.5-turbo-16k", temperature=0.9)
     
-    streaming_llm = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], max_tokens=2600, max_retries=2600, model="gpt-3.5-turbo-16k", temperature=0.9)
+    streaming_llm = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], max_tokens=3000, max_retries=3000, model="gpt-3.5-turbo-16k", temperature=0.9)
 
     question_generator = LLMChain(llm=llm, prompt=CONDENSE_QUESTION_PROMPT)
     
@@ -189,7 +189,7 @@ def handle_csv_data(country, region, options_1, options_2, startDate_obj, endDat
 
     f = open("chat_query.txt", "w", encoding="cp949")
 
-    f.write("아래 양식을 참고해서, 워케이션 계획을 친화적이게 알려줘. 각 관광지, 워케이션에 대해 상세하게 알려주면 좋겠고, 중간 중간에 여행에 대한 부가정보도 추가해주면 좋아. \n")
+    f.write("아래 양식을 참고해서, 워케이션 계획을 가독성 있고 친화적이게 알려줘. 각 관광지, 워케이션에 대해 상세하게 알려주면 좋겠고, 중간 중간에 여행에 대한 부가정보도 추가해주면 좋아. \n")
 
     f.write("(양식)\n")
     f.write("---\n")
@@ -268,17 +268,11 @@ def user_input():
     start_date = st.date_input("워케이션 시작일자를 선택해주세요", datetime.date(2023, 7, 6))
     end_date = st.date_input("워케이션 종료일자 선택해주세요", datetime.date(2023, 7, 6))
 
-    # country = st.multiselect(
-    #     '워케이션을 가려는 지역을 선택해주세요(한곳만 선택해주세요)',
-    #     ["제주시", "서귀포시", "제주도 섬"], 
-    #     max_selections=1
-    #     )
-
     country = ["제주시", "서귀포시"]
 
     region = st.multiselect(
         '워케이션을 가려는 상세 지역을 선택해주세요(한곳만 선택해주세요)',
-        ["제주시내", "서귀포시내", "조천", "화전", "구좌", "인덕", "성산", ],
+        ["제주시내", "서귀포시내", "조천", "구좌", "안덕", "성산", ],
         max_selections=1
         )
 
@@ -290,7 +284,7 @@ def user_input():
     
     options_２ = st.multiselect(
         '워케이션에서 즐기려고 하는 태그를 선택해주세요',
-        ["골프", "다이빙", "서핑", "승마", "역사유적", "오름", "요가", "이색체험", "자연경관", "전시/미술관", "카트/ATV", "테마파크", "해변", "카페", "보트", "도심형", "소도시형", "해양형", "산악형", "스테이형", "호텔형", "워케이션 특화형"],
+        ["골프", "다이빙", "서핑", "승마", "역사유적", "오름", "요가", "이색체험", "자연경관", "전시/미술관", "카트/ATV", "테마파크", "해변", "카페", "보트"],
         )
     
     return country, region, options_1, options_2, start_date, end_date
@@ -312,8 +306,10 @@ def main():
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
 
-    st.header("Your workation Buddy : Woddy")
-    st.write("당신의 워케이션을 도와주는 Woddy를 사용해보세요")
+    st.header("Your workation Buddy : Woody 😀")
+    st.write("당신의 워케이션을 도와주는 Woody를 사용해보세요")
+    st.write("(Beta) 현재는 제주 지역을 한정하여서 서비스를 오픈하였습니다.")
+
     # User Usage
     country, region, options_1, options_2, start_date, end_date = user_input()
 
